@@ -1,6 +1,5 @@
 use clap::{Arg, Command};
-use std::fs;
-use std::path::Path;
+use markov_trigram::find_text_files;
 use tokenizers::decoders::metaspace::{Metaspace, PrependScheme};
 use tokenizers::models::unigram::{Unigram, UnigramTrainerBuilder};
 use tokenizers::normalizers::{strip::Strip, unicode::NFC, utils::Sequence};
@@ -8,31 +7,6 @@ use tokenizers::pre_tokenizers::metaspace::Metaspace as MetaspacePreTokenizer;
 use tokenizers::processors::template::TemplateProcessing;
 use tokenizers::AddedToken;
 use tokenizers::{Result, Tokenizer, TokenizerBuilder};
-
-fn find_tokenizer_files<P: AsRef<Path>>(dir: P) -> std::io::Result<Vec<String>> {
-    let mut files = Vec::new();
-
-    fn visit_dir(dir: &Path, files: &mut Vec<String>) -> std::io::Result<()> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                visit_dir(&path, files)?;
-            } else if let Some(extension) = path.extension() {
-                if extension == "txt" || extension == "text" {
-                    if let Some(path_str) = path.to_str() {
-                        files.push(path_str.to_string());
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    visit_dir(dir.as_ref(), &mut files)?;
-    Ok(files)
-}
 
 fn train_tokenizer(folder_path: &str, vocab_size: usize, output_path: &str) -> Result<()> {
     let mut trainer = UnigramTrainerBuilder::default()
@@ -79,7 +53,7 @@ fn train_tokenizer(folder_path: &str, vocab_size: usize, output_path: &str) -> R
             ))
             .build()?;
 
-    let files = find_tokenizer_files(folder_path)?;
+    let files = find_text_files(folder_path)?;
 
     if files.is_empty() {
         eprintln!("No *.txt files found in {}", folder_path);

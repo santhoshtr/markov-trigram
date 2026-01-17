@@ -17,12 +17,6 @@ CARGO_BUILD    := $(CARGO) build --release
 CARGO_RUN      := $(CARGO) run --release --bin markov-trigram --
 CARGO_TOK      := $(CARGO) run --release --bin ml_tokenizer --
 
-# Find all .txt files recursively in CORPUS_DIR
-TXT_FILES      := $(shell find $(CORPUS_DIR) -type f -name "*.txt" 2>/dev/null)
-
-# Generate corpus arguments for multiple files
-CORPUS_ARGS    := $(foreach file,$(TXT_FILES),-c $(file))
-
 # Colors for output
 COLOR_RESET    := \033[0m
 COLOR_BOLD     := \033[1m
@@ -74,15 +68,8 @@ help:
 build-model: build-rust
 	@echo "$(COLOR_BOLD)Building trigram model...$(COLOR_RESET)"
 	@echo "Corpus directory: $(CORPUS_DIR)"
-	@NUM_FILES=$$(find $(CORPUS_DIR) -type f -name "*.txt" 2>/dev/null | wc -l); \
-	echo "Found $$NUM_FILES file(s)"; \
-	if [ $$NUM_FILES -eq 0 ]; then \
-		echo "$(COLOR_YELLOW)Warning: No .txt files found in $(CORPUS_DIR)$(COLOR_RESET)"; \
-		exit 1; \
-	fi; \
-	echo ""; \
-	CORPUS_FILES=$$(find $(CORPUS_DIR) -type f -name "*.txt" 2>/dev/null | while IFS= read -r file; do printf ' -c '\''%s'\''' "$$file"; done); \
-	eval $(CARGO_RUN) build $$CORPUS_FILES -o $(MODEL_FILE) -t $(TOKENIZER_FILE) -m $(MAX_MEMORY)
+	@echo ""
+	$(CARGO_RUN) build -d $(CORPUS_DIR) -o $(MODEL_FILE) -t $(TOKENIZER_FILE) -m $(MAX_MEMORY)
 	@echo ""
 	@echo "$(COLOR_GREEN)✓ Model built successfully: $(MODEL_FILE)$(COLOR_RESET)"
 

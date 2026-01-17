@@ -1,15 +1,16 @@
+mod direct_map;
 mod sparse_trigram;
 mod trigram_builder;
 mod trigram_iterator;
 
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use markov_trigram::find_text_files;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sparse_trigram::SparseTrigram;
 use tokenizers::Tokenizer;
 use trigram_builder::TrigramBuilder;
-mod direct_map;
 #[derive(Parser)]
 #[command(name = "markov-trigram")]
 #[command(about = "A trigram language model implementation")]
@@ -20,11 +21,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build a trigram model from corpus file(s)
+    /// Build a trigram model from a corpus directory
     Build {
-        /// Path to corpus file(s) - specify multiple with -c file1.txt -c file2.txt
-        #[arg(short, long, num_args = 1.., required = true)]
-        corpus: Vec<String>,
+        /// Directory path to recursively search for text files
+        #[arg(short = 'd', long = "dir", required = true)]
+        directory: String,
         /// Output model file path
         #[arg(short, long, default_value = "trigram_model.bin")]
         output: String,
@@ -82,16 +83,27 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Build {
-            corpus,
+            directory,
             output,
             tokenizer,
             max_memory,
         } => {
             println!(
-                "Building trigram model from {} corpus file(s)",
-                corpus.len()
+                "Building trigram model from corpus directory: {}",
+                directory
             );
             println!("Using tokenizer: {}", tokenizer);
+            println!();
+
+            // Discover all text files in the directory
+            let corpus_files = find_text_files(&directory)
+                .map_err(|e| anyhow!("Failed to discover corpus files: {}", e))?;
+
+            if corpus_files.is_empty() {
+                return Err(anyhow!("No text files found in directory: {}", directory));
+            }
+
+            println!("Found {} text file(s) to process", corpus_files.len());
             println!();
 
             let mut builder = TrigramBuilder::new(&tokenizer, max_memory);
@@ -101,8 +113,13 @@ fn main() -> Result<()> {
             let mut failed = 0;
             let mut failed_files = Vec::new();
 
-            for (idx, corpus_file) in corpus.iter().enumerate() {
-                println!("[{}/{}] Processing: {}", idx + 1, corpus.len(), corpus_file);
+            for (idx, corpus_file) in corpus_files.iter().enumerate() {
+                println!(
+                    "[{}/{}] Processing: {}",
+                    idx + 1,
+                    corpus_files.len(),
+                    corpus_file
+                );
 
                 match builder.process_corpus(corpus_file) {
                     Ok(_) => {
@@ -136,7 +153,10 @@ fn main() -> Result<()> {
                 ));
             }
 
-            println!("Building final model from {} successful file(s)...", successful);
+            println!(
+                "Building final model from {} successful file(s)...",
+                successful
+            );
             let model = builder.build();
 
             println!("Model built with {} trigrams", model.total_trigrams);
