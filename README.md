@@ -5,6 +5,13 @@ A high-performance Rust implementation of an n-gram language model using **Compr
 **Table of Contents**
 - [What is a Trigram Language Model?](#what-is-a-trigram-language-model)
 - [Why Trigrams?](#why-trigrams)
+- [Tokenization: From Text to Numbers](#tokenization-from-text-to-numbers)
+  - [What is Tokenization?](#what-is-tokenization)
+  - [Subword Tokenization](#subword-tokenization)
+  - [Unigram Algorithm](#unigram-algorithm)
+  - [The ml_tokenizer Binary](#the-ml_tokenizer-binary)
+  - [Two-Step Workflow](#two-step-workflow)
+  - [Vocabulary Size Considerations](#vocabulary-size-considerations)
 - [The Sparsity Problem](#the-sparsity-problem)
 - [Sparse Tensor Representations](#sparse-tensor-representations)
 - [CSF vs CSR: Why We Chose CSF](#csf-vs-csr-why-we-chose-csf)
@@ -35,6 +42,8 @@ Where:
 Consider the sentence: *"The quick brown fox jumps over the lazy dog"*
 
 Tokenized: `[The, quick, brown, fox, jumps, over, the, lazy, dog]`
+
+*(Note: For simplicity, this example shows word-level tokenization. In practice, the model uses subword tokenization with numeric token IDs. See [Tokenization: From Text to Numbers](#tokenization-from-text-to-numbers) below for details.)*
 
 This sentence contains these trigrams:
 - (The, quick, brown) → count = 1
@@ -89,6 +98,286 @@ Let's compare different n-gram models on the **context-memory spectrum**:
    - Unigrams: Too simplistic, poor quality
    - Bigrams: Useful but less accurate
    - Higher n-grams: Often overfit, require massive corpora
+
+---
+
+## Tokenization: From Text to Numbers
+
+Before building a trigram model, raw text must be converted into numeric token IDs.
+This section explains why tokenization is essential, how it works, and how to use the `ml_tokenizer` binary.
+
+### What is Tokenization?
+
+**Tokenization** is the process of converting human-readable text into a sequence of numeric IDs that computers can process efficiently.
+
+**Why it's needed:**
+- Computer memory stores numbers, not strings
+- Trigrams store u32 integers (4 bytes each), not string references (heap allocations)
+- Integer comparisons are O(1) vs string comparisons which are O(n)
+- Fixed vocabulary enables sparse storage (CSF structure)
+
+**Visual example:**
+
+```
+Input text:      "Hello world"  →  Tokenizer  →  Token IDs: [4521, 892]
+(English)
+
+Input text:      "നമസ്കാരം"    →  Tokenizer  →  Token IDs: [8234, 3156, 7891, 2401]
+(Malayalam)
+```
+
+**Important:** In the trigram formula, w₁, w₂, and w₃ are actually these numeric token IDs:
+
+$$\text{Trigram}(w_1, w_2, w_3) = (142, 1847, 3421) \rightarrow \text{count} = 42$$
+
+The tokenizer maintains a mapping: Token ID ↔ Token String (e.g., 142 ↔ "The")
+
+### Subword Tokenization
+
+The challenge: Can't store every possible word (infinite vocabulary), but need to cover text effectively.
+
+**Solution: Break words into reusable subword pieces**
+
+Instead of word-level tokens:
+```
+"The quick brown" → ["The", "quick", "brown"]  // Vocabulary size: 100,000+ 😢
+```
+
+Use subword tokens (smaller, reusable pieces):
+```
+"The quick brown" → ["▁The", "▁quick", "▁brown"]  // Vocabulary size: 16,000 ✓
+```
+
+**Why subword tokenization is better:**
+1. **Finite vocabulary**: 16,000 tokens covers ~99% of any language
+2. **Handles rare words**: "supercalifragilistic" decomposes instead of becoming `<unk>`
+3. **Language-agnostic**: Same approach works for English, Malayalam, Japanese, etc.
+4. **Efficient storage**: Smaller vocabulary = smaller trigram model
+
+**Concrete examples:**
+
+English:
+```
+"unhappiness"         → ["▁un", "happiness"]
+"internationally"     → ["▁inter", "national", "ly"]
+"don't"              → ["▁don", "'", "t"]
+```
+
+Malayalam (Indic script):
+```
+"എങ്ങനെയുണ്ട്?" (How are you?)  → ["▁എ", "ങ്ങനെ", "യ", "ുണ്ട്", "?"]
+"നമസ്കാരം" (Hello)              → ["▁ന", "മ", "സ്", "കാ", "രം"]
+```
+
+**Note on Metaspace:** The `▁` character (U+2581, "Lower One Eighth Block") represents word boundaries.
+This allows the tokenizer to distinguish:
+
+- `"hello"` (word by itself) vs
+- `hello` (part of "hello world")
+
+### Unigram Algorithm
+
+The `ml_tokenizer` binary uses the **Unigram tokenization algorithm** to learn vocabulary from your corpus.
+This is a probabilistic approach used by modern NLP systems (SentencePiece, XLNet, mBART, etc.).
+
+**How it works (high level):**
+
+1. **Initialization**: Start with a large vocabulary of all character n-grams (unicode characters, bigrams, trigrams, etc.)
+
+2. **Probability Assignment**: Assign probability to each token based on corpus frequency:
+   $$P(\text{token}) \propto \text{count in corpus}$$
+
+3. **Optimization (EM algorithm)**:
+   - Maximize likelihood: $$\mathcal{L} = \sum_{sentence} \log P(\text{sentence})$$
+   - Iteratively adjust probabilities
+   - Remove lowest-probability tokens
+   - After convergence: Keep top K tokens (default: 16,000)
+
+4. **Segmentation (Inference)**: Use **Viterbi dynamic programming** to find best tokenization:
+   ```
+   sentence = "international"
+
+   Find segmentation maximizing: P(token₁) × P(token₂) × ... × P(tokenₙ)
+
+   Possibilities:
+     - ["▁inter", "national", "ly"]     score: P(inter) × P(national) × P(ly)
+     - ["▁i", "n", "t", "er", "n", ...] score: P(i) × P(n) × P(t) × ...
+
+   Viterbi chooses: ["▁inter", "national", "ly"]  (highest score)
+   ```
+   Time complexity: **O(n²)** for string length n
+
+**Why Unigram vs alternatives:**
+- **BPE** (Byte Pair Encoding): Deterministic, less flexible
+- **WordPiece** (BERT): English-biased, requires language-specific initialization
+- **Unigram**: Probabilistic, works for all languages, optimal segmentation
+
+**References:**
+- Kudo (2018): "Subword Regularization: Improving Neural Network Translation Models without Parallel Data"
+- SentencePiece: https://github.com/google/sentencepiece
+
+### The ml_tokenizer Binary
+
+The `ml_tokenizer` binary trains custom tokenizers for your specific corpus and language.
+
+**Training a tokenizer:**
+
+```bash
+cargo run --release --bin ml_tokenizer -- train \
+  -f corpus/ \              # Directory with .txt training files
+  -v 16000 \                # Vocabulary size (default: 16000)
+  -o data/tokenizer.ml.json # Output file
+```
+
+This command:
+1. Discovers all `.txt` files in `corpus/` directory
+2. Runs Unigram algorithm on the combined text
+3. Creates vocabulary of 16,000 tokens
+4. Saves as HuggingFace-compatible JSON file
+
+**Output file structure** (`data/tokenizer.ml.json`):
+```json
+{
+  "version": "1.0",
+  "model": {
+    "type": "unigram",
+    "vocab": [
+      ["▁the", 0],
+      ["▁a", 1],
+      ["▁and", 2],
+      ...
+    ]
+  },
+  "normalizer": {...},
+  "pre_tokenizer": {...},
+  "post_processor": {...},
+  "decoder": {...}
+}
+```
+
+**Special tokens (always included):**
+- `<s>` : Start of sequence (ID 0)
+- `</s>` : End of sequence (ID 2)
+- `<unk>` : Unknown/out-of-vocabulary words
+- `<pad>` : Padding token
+- `<mask>` : Masking token (for MLM tasks)
+
+**Testing the tokenizer:**
+
+```bash
+# Encode English text
+cargo run --release --bin ml_tokenizer -- encode \
+  -t data/tokenizer.ml.json "Hello, world!"
+
+# Output:
+# Input text: Hello, world!
+# Tokens: ["▁Hello", ",", "▁world", "!"]
+# Token IDs: [4521, 6, 892, 23]
+```
+
+```bash
+# Encode Malayalam text
+cargo run --release --bin ml_tokenizer -- encode \
+  -t data/tokenizer.ml.json "നമസ്കാരം"
+
+# Output:
+# Input text: നമസ്കാരം
+# Tokens: ["▁ന", "മ", "സ്", "കാ", "രം"]
+# Token IDs: [8234, 5123, 7891, 3156, 2401]
+```
+
+### Two-Step Workflow
+
+The markov-trigram project has two distinct phases:
+
+**Step 1: Train Tokenizer** (once per language/corpus)
+```
+Corpus Text Files → ml_tokenizer train → tokenizer.ml.json
+                                        (vocabulary mapping)
+```
+
+**Step 2: Build Trigram Model** (uses tokenizer from Step 1)
+```
+Corpus Text Files + tokenizer.ml.json → markov-trigram build → trigram_model.bin
+                                                               (CSF structure)
+```
+
+**Complete workflow diagram:**
+
+```
+corpus/*.txt (raw training text)
+    ↓
+    ├─→ ml_tokenizer train -f corpus/ -v 16000 -o data/tokenizer.ml.json
+    │   (Learn vocabulary: text → token IDs)
+    │   └─→ data/tokenizer.ml.json (16K tokens mapping)
+    │
+    └─→ markov-trigram build -d corpus/ -t data/tokenizer.ml.json -o model.bin
+        (Count trigrams: token IDs → CSF structure)
+        └─→ trigram_model.bin (compressed sparse model)
+
+Both files needed for inference:
+    ├─→ markov-trigram query -m model.bin -t data/tokenizer.ml.json --w1 The --w2 quick --w3 brown
+    │   (Query: "The quick brown" → token IDs → CSF lookup)
+    │
+    └─→ markov-trigram generate -m model.bin -t data/tokenizer.ml.json --prompt "The quick"
+        (Generate: prompt → token IDs → sampling → token IDs → decode)
+```
+
+**Key points:**
+- Tokenizer is **reusable**: Train once, use with any model
+- Model building **requires** tokenizer: Can't build without it
+- Both files needed for **inference**: Querying and generation
+- Vocabulary from tokenizer must match model's vocabulary size
+
+### Vocabulary Size Considerations
+
+Choosing the right vocabulary size is a critical decision:
+
+| Size | Use Case | Pros | Cons |
+|------|----------|------|------|
+| **1K** | Ultra-low-resource | Very small model | High `<unk>` rate, poor accuracy |
+| **4K** | Low-resource languages | Small memory footprint | Limited coverage |
+| **8K** | Small projects, prototypes | Manageable size | Some unknowns |
+| **16K** | **Recommended default** | Good balance | Moderate sparsity |
+| **32K** | Large corpora, high-coverage | Better coverage | Higher sparsity, memory overhead |
+| **64K+** | Specialized domains | Excellent coverage | Very sparse data, slow queries |
+
+**Language-specific recommendations:**
+
+**Malayalam & Indic Scripts** (16K-20K):
+- Complex script with character combinations
+- Subword approach essential
+- 16K usually sufficient; 20K for large, diverse corpora
+
+**English** (8K-16K):
+- Relatively simple morphology
+- 8K covers ~95% of text
+- 16K recommended for better rare word handling
+
+**Mixed-language corpora** (20K-32K):
+- Combine multiple scripts/languages
+- Use larger vocabulary to cover all
+
+**How to choose:**
+
+1. **Start with 16K** (default, works well for most cases)
+2. **Check coverage**: Train tokenizer, run on sample text
+3. **Count `<unk>` tokens**: If >2% of tokens are `<unk>`, increase vocabulary
+4. **Monitor sparsity**: Larger vocabulary = more zeros in CSF structure
+5. **Retrain if needed**: Easy to retrain with different vocabulary size
+
+**Checking coverage example:**
+
+```bash
+# Train with 16K vocabulary
+cargo run --bin ml_tokenizer -- train -f corpus/ -v 16000 -o tok.json
+
+# Test on sample text
+cargo run --bin ml_tokenizer -- encode -t tok.json "Your test text here"
+
+# Count <unk> tokens in output
+# If ≥2% are <unk>: Consider increasing to 20K or 32K
+```
 
 ---
 
@@ -413,6 +702,26 @@ The CSF structure maintains these invariants:
 ---
 
 ## Building the Model
+
+### Tokenization Step (Preprocessing)
+
+Before counting trigrams, each line of raw text is converted to token IDs using the tokenizer:
+
+```
+line = "The quick brown fox"
+token_ids = tokenizer.encode(line)
+// Result: [142, 1847, 3421, 9876]
+```
+
+These u32 integers are what the model actually stores in the CSF structure. The tokenizer file maintains the mapping (e.g., 142 ↔ "The") for display and inference.
+
+**Processing flow:**
+1. Load tokenizer from file (e.g., `data/tokenizer.ml.json`)
+2. Read each line from corpus files
+3. Normalize text (lowercase, unicode normalization, etc.)
+4. Tokenize: text → token IDs using Unigram model
+5. Extract trigrams from token ID sequences
+6. Count occurrences in CSF structure
 
 ### Phase 1: Collection (In-Memory HashMap)
 
@@ -770,6 +1079,58 @@ Algorithm: Generate(prompt, max_tokens, seed)
 ---
 
 ## Usage Examples
+
+### Prerequisites: Training a Tokenizer
+
+Before building a trigram model, you must first train a tokenizer from your corpus. The tokenizer creates the vocabulary that the model will use.
+
+**Step 1: Train the tokenizer**
+
+```bash
+# Train tokenizer from corpus directory
+cargo run --release --bin ml_tokenizer -- train \
+  -f corpus/ \                      # Directory with .txt files
+  -v 16000 \                        # Vocabulary size (default)
+  -o data/tokenizer.ml.json         # Output file
+
+# Or using Makefile
+make train-tokenizer
+```
+
+**What this does:**
+1. Discovers all `.txt` files in `corpus/` directory
+2. Runs Unigram tokenizer training algorithm
+3. Creates vocabulary of 16,000 tokens
+4. Saves as `data/tokenizer.ml.json` (HuggingFace format)
+
+**Output example:**
+```
+Found 42 text files:
+  corpus/book1.txt
+  corpus/book2.txt
+  ...
+
+Training tokenizer...
+[████████████████████] 100%
+
+Tokenizer saved to: data/tokenizer.ml.json
+
+Test text: Hello, world!
+Tokens: ["▁Hello", ",", "▁world", "!"]
+Token IDs: [4521, 6, 892, 23]
+```
+
+**Step 2: Verify tokenizer works**
+
+```bash
+# Encode test text
+cargo run --release --bin ml_tokenizer -- encode \
+  -t data/tokenizer.ml.json "Test your text here"
+
+# Output should show tokens and IDs without errors
+```
+
+**Now you can build the trigram model** using this tokenizer (see below).
 
 ### Building a Model
 
