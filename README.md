@@ -20,7 +20,8 @@ A high-performance Rust implementation of an n-gram language model using **Compr
 
 ### Basic Concept
 
-A **trigram language model** estimates the probability of the next word given two preceding words. It answers the question: *"What's the probability of word w₃ appearing after the sequence of words w₁ and w₂?"*
+A **trigram language model** estimates the probability of the next word given two preceding words.
+It answers the question: *"What's the probability of word w₃ appearing after the sequence of words w₁ and w₂?"*
 
 Mathematically:
 $$P(w_3 | w_1, w_2) = \frac{\text{Count}(w_1, w_2, w_3)}{\text{Count}(w_1, w_2)}$$
@@ -122,7 +123,7 @@ Real corpora are heavily sparse:
 
 Think of trigrams as a 3D tensor where dimensions are:
 - **Row**: First word (w₁)
-- **Column**: Second word (w₂)  
+- **Column**: Second word (w₂)
 - **Depth**: Third word (w₃)
 - **Value**: Count of this trigram
 
@@ -250,33 +251,33 @@ Given (w₁, w₂, w₃), find the count:
 
 ```
 Algorithm: CSF_GetCount(w₁, w₂, w₃)
-  
+
   // Level 1: Find w₁
   if w₁ ∉ w1_to_idx:
     return 0
   w1_idx ← w1_to_idx[w₁]
-  
+
   // Get range of w₂ entries for this w₁
   w2_start ← w1_ptr[w1_idx]
   w2_end ← w1_ptr[w1_idx + 1]
-  
+
   // Level 2: Binary search for w₂
   w2_slice ← w2_indices[w2_start : w2_end]
   w2_rel_idx ← BinarySearch(w2_slice, w₂)
   if w₂ not found:
     return 0
   w2_abs_idx ← w2_start + w2_rel_idx
-  
+
   // Get range of w₃ entries for this (w₁, w₂)
   w3_start ← w2_ptr[w2_abs_idx]
   w3_end ← w2_ptr[w2_abs_idx + 1]
-  
+
   // Level 3: Binary search for w₃
   w3_slice ← w3_indices[w3_start : w3_end]
   w3_rel_idx ← BinarySearch(w3_slice, w₃)
   if w₃ not found:
     return 0
-  
+
   return counts[w3_start + w3_rel_idx]
 ```
 
@@ -361,26 +362,26 @@ CSF approach:
 pub struct SparseTrigram {
     // HashMap for fast w₁ → index mapping
     pub w1_to_idx: HashMap<u32, usize>,
-    
+
     // Level 1 pointers: define ranges in w2_indices
     pub w1_ptr: Vec<usize>,
-    
+
     // Level 2: actual w₂ values (sorted per w₁)
     pub w2_indices: Vec<u32>,
-    
+
     // Level 2 pointers: define ranges in w3_indices
     pub w2_ptr: Vec<usize>,
-    
+
     // Level 3: actual w₃ values (sorted per (w₁,w₂))
     pub w3_indices: Vec<u32>,
-    
+
     // Level 3 values: trigram counts
     pub counts: Vec<u32>,
-    
+
     // Metadata
     pub vocabulary_size: usize,
     pub total_trigrams: usize,
-    
+
     // For smoothing (store cumulative sums)
     pub bigram_totals: Vec<u32>,    // Sum of counts for each (w₁,w₂)
     pub unigram_totals: Vec<u32>,   // Sum of counts for each w₁
@@ -449,20 +450,20 @@ The builder reads corpus files in **10,000-line chunks** and processes each chun
 
 ```rust
 Algorithm: ProcessCorpus(file_path)
-  
+
   const CHUNK_SIZE = 10,000
   buffer ← empty list
   tokenizer ← load tokenizer
-  
+
   for each line in file:
     buffer.append(line)
-    
+
     if buffer.size() >= CHUNK_SIZE:
       // Process chunk in parallel
       local_trigrams ← ProcessLinesParallel(buffer)
       merge local_trigrams into data
       buffer.clear()
-  
+
   if buffer not empty:
     local_trigrams ← ProcessLinesParallel(buffer)
     merge local_trigrams into data
@@ -470,19 +471,19 @@ Algorithm: ProcessCorpus(file_path)
 
 ```rust
 Algorithm: ProcessLinesParallel(lines) → Vec<HashMap<(w₁,w₂,w₃), count>>
-  
+
   // Rayon parallelizes over lines
   return lines.par_iter().map(|line| {
     local_map ← empty HashMap
-    
+
     // Tokenize entire line
     tokens ← tokenizer.encode(line)
-    
+
     // Extract all trigrams from tokens
     for i = 2 to tokens.len():
       (w₁, w₂, w₃) ← (tokens[i-2], tokens[i-1], tokens[i])
       local_map[(w₁, w₂, w₃)] += 1
-    
+
     return local_map
   }).collect()
 ```
@@ -499,15 +500,15 @@ Final step: convert HashMap structure to CSF arrays.
 
 ```rust
 Algorithm: BuildCSF(data)
-  
+
   // Step 1: Sort w₁ keys deterministically
   w1_keys ← sort(data.keys())
-  
+
   // Step 2: Create w₁ mapping
   w1_to_idx ← {}
   for (idx, w₁) in enumerate(w1_keys):
     w1_to_idx[w₁] ← idx
-  
+
   // Step 3: Build three-level structure
   w1_ptr ← [0]
   w2_indices ← []
@@ -516,34 +517,34 @@ Algorithm: BuildCSF(data)
   counts ← []
   bigram_totals ← [0 for _ in range(vocab_size²)]
   unigram_totals ← [0 for _ in range(vocab_size)]
-  
+
   for w₁ in w1_keys:
     w2_map ← data[w₁]
     w2_keys ← sort(w2_map.keys())
-    
+
     for w₂ in w2_keys:
       // Record this w₂
       w2_indices.append(w₂)
       w2_ptr.append(w3_indices.len())
-      
+
       // Process all w₃ for this (w₁, w₂)
       w3_map ← w2_map[w₂]
       w3_entries ← sort([(w₃, count) for (w₃, count) in w3_map.items()])
-      
+
       for (w₃, count) in w3_entries:
         w3_indices.append(w₃)
         counts.append(count)
-        
+
         // Update totals
         bigram_totals[w₁ * vocab_size + w₂] += count
         unigram_totals[w₁] += count
-    
+
     // Record end of w₂ entries for this w₁
     w1_ptr.append(w2_indices.len())
-  
+
   // Final pointer for w2_ptr
   w2_ptr.append(w3_indices.len())
-  
+
   return SparseTrigram {
     w1_to_idx, w1_ptr, w2_indices, w2_ptr,
     w3_indices, counts, bigram_totals, unigram_totals
@@ -565,40 +566,40 @@ Algorithm: BuildCSF(data)
 
 ```rust
 Algorithm: GetCount(w₁, w₂, w₃)
-  
+
   // Constant-time HashMap lookup
   if w₁ ∉ w1_to_idx:
     return 0
   w1_idx ← w1_to_idx[w₁]
-  
+
   // Get w₂ range for this w₁
   w2_start ← w1_ptr[w1_idx]
   w2_end ← w1_ptr[w1_idx + 1]
-  
+
   if w2_start == w2_end:  // No w₂ entries for this w₁
     return 0
-  
+
   // Binary search for w₂
   w2_slice ← w2_indices[w2_start : w2_end]
   w2_rel_idx ← BinarySearch(w2_slice, w₂)
   if not found:
     return 0
-  
+
   w2_abs_idx ← w2_start + w2_rel_idx
-  
+
   // Get w₃ range for this (w₁, w₂)
   w3_start ← w2_ptr[w2_abs_idx]
   w3_end ← w2_ptr[w2_abs_idx + 1]
-  
+
   if w3_start == w3_end:  // No w₃ entries for this (w₁, w₂)
     return 0
-  
+
   // Binary search for w₃
   w3_slice ← w3_indices[w3_start : w3_end]
   w3_rel_idx ← BinarySearch(w3_slice, w₃)
   if not found:
     return 0
-  
+
   return counts[w3_start + w3_rel_idx]
 ```
 
@@ -609,33 +610,33 @@ Algorithm: GetCount(w₁, w₂, w₃)
 
 ```rust
 Algorithm: GetW3Candidates(w₁, w₂) → Vec<(w₃, count)>
-  
+
   if w₁ ∉ w1_to_idx:
     return []
-  
+
   w1_idx ← w1_to_idx[w₁]
   w2_start ← w1_ptr[w1_idx]
   w2_end ← w1_ptr[w1_idx + 1]
-  
+
   if w2_start == w2_end:
     return []
-  
+
   // Binary search for w₂
   w2_slice ← w2_indices[w2_start : w2_end]
   w2_rel_idx ← BinarySearch(w2_slice, w₂)
   if not found:
     return []
-  
+
   w2_abs_idx ← w2_start + w2_rel_idx
-  
+
   // Get ALL w₃ for this (w₁, w₂) - direct access!
   w3_start ← w2_ptr[w2_abs_idx]
   w3_end ← w2_ptr[w2_abs_idx + 1]
-  
+
   results ← []
   for i in range(w3_start, w3_end):
     results.append((w3_indices[i], counts[i]))
-  
+
   return results
 ```
 
@@ -646,15 +647,15 @@ Algorithm: GetW3Candidates(w₁, w₂) → Vec<(w₃, count)>
 
 ```rust
 Algorithm: Probability(w₁, w₂, w₃, smoothing)
-  
+
   count ← GetCount(w₁, w₂, w₃)
-  
+
   if count > 0:
     // Maximum likelihood estimation
     bigram_total ← bigram_totals[w₁ * vocab_size + w₂]
     if bigram_total > 0:
       return count / bigram_total
-  
+
   // Laplace smoothing if count is 0
   if smoothing enabled:
     unigram_total ← unigram_totals[w₁]
@@ -662,7 +663,7 @@ Algorithm: Probability(w₁, w₂, w₃, smoothing)
       // P(w₃ | w₁, w₂) = α / (unigram_total + α * vocab_size)
       // where α is smoothing parameter
       return α / (unigram_total + α * vocab_size)
-  
+
   return 0
 ```
 
@@ -689,7 +690,7 @@ HashMap (collision cost ~1.05 at load factor 0.75):
   Memory: 50K entries × 16 bytes = 800 KB
 
 CSF:
-  Time: 100K × (10 + 9 + 6) = ~2.5M operations  
+  Time: 100K × (10 + 9 + 6) = ~2.5M operations
   Memory: Multiple arrays, ~500 KB
 
 Verdict: HashMap is faster! But...
@@ -699,11 +700,11 @@ Verdict: HashMap is faster! But...
 
 ```
 Total model memory (Sherlock Holmes, 16K vocab):
-  Naive HashMap: 
+  Naive HashMap:
     - All 50K trigrams: 50K × 16B = 800 KB
     - w₁, w₂, w₃ overhead: ~400 KB
     - Total: ~1.2 MB (just for lookup)
-    
+
   CSF:
     - Pointer structures: ~600 KB
     - Dense arrays: ~400 KB
@@ -738,15 +739,15 @@ CSF:
 
 ```
 Algorithm: Generate(prompt, max_tokens, seed)
-  
+
   // Initial context
   tokens ← Tokenize(prompt)
   w1, w2 ← tokens[-2], tokens[-1]  // Last two tokens
-  
+
   for i in range(max_tokens):
     // Get all possible next words
     candidates ← GetW3Candidates(w1, w2)
-    
+
     if candidates is empty:
       // Backoff: sample from vocabulary
       w3 ← RandomToken()
@@ -755,10 +756,10 @@ Algorithm: Generate(prompt, max_tokens, seed)
       total ← sum(counts in candidates)
       r ← RandomInt(0, total)
       w3 ← SelectFromCandidates(candidates, r)
-    
+
     tokens.append(w3)
     w1, w2 ← w2, w3  // Slide window
-  
+
   return Detokenize(tokens)
 ```
 
@@ -853,7 +854,7 @@ Speech recognizer produces: {"I", "want", "to", "here"/"hear", "a", "song"}
 Ambiguity: Did user say "here" or "hear"?
   P(a | to, here) = 0.0001  (rare)
   P(a | to, hear) = 0.0512  (common in music context)
-  
+
 Decision: User said "hear" ✓ (CSF enables fast evaluation of both)
 ```
 
@@ -900,4 +901,3 @@ For most NLP applications with English-scale vocabularies (10K-100K tokens) and 
 
 ---
 
-**Built with 🦀 Rust | Optimized with CSF | Inspired by Classic NLP**
