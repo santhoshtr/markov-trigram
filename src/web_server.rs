@@ -2,23 +2,23 @@ use anyhow::{anyhow, Result};
 use axum::{
     extract::{DefaultBodyLimit, State},
     http::StatusCode,
-    response::{sse, IntoResponse, Response},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use clap::Parser;
-use rand::rngs::{OsRng, StdRng};
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokenizers::Tokenizer;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 mod direct_map;
 mod sparse_trigram;
-mod trigram_builder;
 mod trigram_iterator;
 
 use sparse_trigram::SparseTrigram;
@@ -29,11 +29,11 @@ struct GenerateRequest {
     prompt: String,
 }
 
-/// Response payload for SSE events
-#[derive(Serialize, Clone)]
-struct TokenEvent {
-    token: String,
-    done: bool,
+/// Response payload for generation
+#[derive(Serialize)]
+struct GenerateResponse {
+    text: String,
+    tokens: usize,
 }
 
 /// Application state
@@ -41,6 +41,9 @@ struct AppState {
     model: SparseTrigram,
     tokenizer: Tokenizer,
 }
+
+/// Number of tokens to generate in each request
+const MAX_TOKENS_PER_REQUEST: usize = 500;
 
 #[derive(Parser)]
 #[command(name = "markov-web")]
@@ -112,95 +115,66 @@ async fn serve_index() -> impl IntoResponse {
     }
 }
 
-/// Generate text with streaming response
+/// Generate text and return as JSON
 async fn generate_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<GenerateRequest>,
-) -> Response {
+) -> Result<Json<GenerateResponse>, (StatusCode, Json<serde_json::Value>)> {
     let prompt = req.prompt.trim();
 
     // Validate prompt
     if prompt.is_empty() {
-        return (
+        return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Prompt cannot be empty"})),
-        )
-            .into_response();
+        ));
     }
 
     // Tokenize prompt
-    match tokenize_prompt(&state.tokenizer, prompt) {
-        Ok((mut all_tokens, mut w1, mut w2)) => {
-            // Create SSE stream - move everything that needs to happen into the stream
-            let stream = async_stream::stream! {
-                // Use a local RNG that we create fresh in the stream
-                use std::cell::RefCell;
-                let rng = RefCell::new(StdRng::seed_from_u64(
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs()
-                ));
-
-                // Send initial prompt
-                if let Ok(prompt_decoded) = state.tokenizer.decode(&all_tokens, true) {
-                    let event = TokenEvent {
-                        token: prompt_decoded,
-                        done: false,
-                    };
-                    yield Ok::<_, anyhow::Error>(sse::Event::default().json_data(event).unwrap());
-                }
-
-                // Generation loop
-                for _token_count in 0..10000 {
-                    let next_token = {
-                        let mut rng_mut = rng.borrow_mut();
-                        match state.model.sample_next(w1, w2, &mut *rng_mut) {
-                            Some(token) => token,
-                            None => rng_mut.random_range(0..state.model.vocabulary_size as u32),
-                        }
-                    };
-
-                    all_tokens.push(next_token);
-                    w1 = w2;
-                    w2 = next_token;
-
-                    // Decode and send the full text
-                    if let Ok(full_text) = state.tokenizer.decode(&all_tokens, true) {
-                        let event = TokenEvent {
-                            token: full_text,
-                            done: false,
-                        };
-                        yield Ok::<_, anyhow::Error>(sse::Event::default().json_data(event).unwrap());
-                    }
-
-                    // Small delay to prevent overwhelming the client
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-                }
-
-                // Send completion event
-                let completion_event = TokenEvent {
-                    token: String::new(),
-                    done: true,
-                };
-                yield Ok::<_, anyhow::Error>(sse::Event::default().json_data(completion_event).unwrap());
-            };
-
-            sse::Sse::new(stream).into_response()
-        }
+    let (mut all_tokens, mut w1, mut w2) = match tokenize_prompt(&state.tokenizer, prompt) {
+        Ok(result) => result,
         Err(e) => {
-            let error_event = TokenEvent {
-                token: format!("Error: {}", e),
-                done: true,
-            };
-
-            let stream = async_stream::stream! {
-                yield Ok::<_, anyhow::Error>(sse::Event::default().json_data(error_event).unwrap());
-            };
-
-            sse::Sse::new(stream).into_response()
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": e.to_string()})),
+            ));
         }
+    };
+
+    // Create RNG
+    let mut rng = StdRng::seed_from_u64(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64,
+    );
+
+    // Generate tokens
+    for _ in 0..MAX_TOKENS_PER_REQUEST {
+        let next_token = match state.model.sample_next(w1, w2, &mut rng) {
+            Some(token) => token,
+            None => rng.random_range(0..state.model.vocabulary_size as u32),
+        };
+
+        all_tokens.push(next_token);
+        w1 = w2;
+        w2 = next_token;
     }
+
+    // Decode to text
+    let text = match state.tokenizer.decode(&all_tokens, true) {
+        Ok(decoded) => decoded,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to decode tokens: {}", e)})),
+            ));
+        }
+    };
+
+    let tokens = all_tokens.len();
+
+    Ok(Json(GenerateResponse { text, tokens }))
 }
 
 /// Tokenize the prompt and extract initial context (w1, w2)
