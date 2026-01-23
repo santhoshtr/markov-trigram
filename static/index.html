@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markov Trigram Generator</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>Markov Trigram Text Generator</h1>
+            <p class="subtitle">Generate text using a trigram language model</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Input Section -->
+            <div class="input-section">
+                <label for="prompt">Enter your prompt:</label>
+                <textarea
+                    id="prompt"
+                    class="prompt-input"
+                    placeholder="Sherlock Holmes was a detective who..."
+                    rows="4"
+                ></textarea>
+            </div>
+
+            <!-- Control Buttons -->
+            <div class="controls">
+                <button id="generateBtn" class="btn btn-primary">Generate</button>
+                <button id="stopBtn" class="btn btn-danger" style="display: none;">Stop</button>
+                <div id="status" class="status"></div>
+            </div>
+
+            <!-- Output Section -->
+            <div class="output-section">
+                <div class="output-header">
+                    <label>Generated Text:</label>
+                    <span id="tokenCount" class="token-count">0 tokens</span>
+                </div>
+                <div id="output" class="output-text"></div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Powered by Markov Trigram Model • Press stop to cancel generation</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

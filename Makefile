@@ -16,6 +16,7 @@ CARGO          := cargo
 CARGO_BUILD    := $(CARGO) build --release
 CARGO_RUN      := $(CARGO) run --release --bin markov-trigram --
 CARGO_TOK      := $(CARGO) run --release --bin ml_tokenizer --
+CARGO_WEB      := $(CARGO) run --release --bin markov-web --
 
 # Colors for output
 COLOR_RESET    := \033[0m
@@ -28,7 +29,7 @@ COLOR_BLUE     := \033[34m
 # Main Targets
 # ============================================================================
 
-.PHONY: all help build test clean
+.PHONY: all help build test clean serve rebuild demo info rebuild check-model
 
 # Default target
 all: help
@@ -44,6 +45,7 @@ help:
 	@echo "  $(COLOR_GREEN)train-tokenizer$(COLOR_RESET)   - Train tokenizer from corpus directory"
 	@echo "  $(COLOR_GREEN)generate$(COLOR_RESET)          - Generate text from a prompt (use PROMPT variable)"
 	@echo "  $(COLOR_GREEN)query$(COLOR_RESET)             - Query trigram probability (use W1, W2, W3 variables)"
+	@echo "  $(COLOR_GREEN)serve$(COLOR_RESET)             - Start web server (port 3000)"
 	@echo "  $(COLOR_GREEN)test$(COLOR_RESET)              - Run Rust tests"
 	@echo "  $(COLOR_GREEN)build$(COLOR_RESET)             - Build Rust binaries"
 	@echo "  $(COLOR_GREEN)format$(COLOR_RESET)            - Format Rust code with cargo fmt"
@@ -137,6 +139,17 @@ query: check-model
 		--w3 "$(W3)" \
 		-m $(MODEL_FILE) \
 		-t $(TOKENIZER_FILE)
+
+# Serve web interface
+# Usage: make serve [PORT=3000] [HOST=127.0.0.1]
+PORT ?= 3000
+HOST ?= 127.0.0.1
+
+serve: check-model build-rust
+	@echo "$(COLOR_BOLD)Starting web server on http://$(HOST):$(PORT)...$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Visit the URL above in your browser to use the web interface$(COLOR_RESET)"
+	@echo ""
+	$(CARGO_WEB) --model $(MODEL_FILE) --tokenizer $(TOKENIZER_FILE) --port $(PORT) --host $(HOST)
 
 # ============================================================================
 # Build & Test
