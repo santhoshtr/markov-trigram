@@ -6,7 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const status = document.getElementById('status');
     const tokenCount = document.getElementById('tokenCount');
 
-    let eventSource = null;
+    let abortController = null;
+    let currentReader = null;
     let isGenerating = false;
     let tokenCounter = 0;
 
@@ -52,11 +53,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     stopBtn.addEventListener('click', () => {
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-        }
+        // Signal generation should stop
         isGenerating = false;
+        
+        // Abort the fetch request at network level
+        if (abortController) {
+            abortController.abort();
+            abortController = null;
+        }
+        
+        // Cancel the reader stream
+        if (currentReader) {
+            currentReader.cancel();
+            currentReader = null;
+        }
+        
         status.textContent = '⏹️ Generation stopped';
         status.className = 'status';
         generateBtn.style.display = 'inline-flex';
@@ -67,18 +78,17 @@ document.addEventListener('DOMContentLoaded', () => {
     async function generateText(prompt) {
         return new Promise((resolve, reject) => {
             try {
-                // Close any existing connection
-                if (eventSource) {
-                    eventSource.close();
-                }
+                // Create a new abort controller for this generation session
+                abortController = new AbortController();
 
-                // Fetch the SSE stream
+                // Fetch the SSE stream with abort signal
                 fetch('/api/generate', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ prompt }),
+                    signal: abortController.signal,  // Enable cancellation
                 })
                     .then((response) => {
                         if (!response.ok) {
@@ -87,14 +97,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         // Get the response body as a readable stream
                         const reader = response.body.getReader();
+                        currentReader = reader;
                         const decoder = new TextDecoder();
                         let buffer = '';
 
                         function read() {
+                            // Check if generation was stopped by user
+                            if (!isGenerating) {
+                                reader.cancel('User stopped generation');
+                                resolve();
+                                return;
+                            }
+
                             reader.read().then(({ done, value }) => {
                                 if (done) {
                                     status.textContent = '✅ Done!';
                                     status.className = 'status';
+                                    currentReader = null;
                                     resolve();
                                     return;
                                 }
@@ -115,7 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                                 if (event.done) {
                                                     status.textContent = '✅ Done!';
                                                     status.className = 'status';
-                                                    reader.cancel();
+                                                    currentReader = null;
+                                                    reader.cancel('Generation complete');
                                                     resolve();
                                                     return;
                                                 }
@@ -135,10 +155,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 read();
                             }).catch((error) => {
-                                if (!isGenerating) {
-                                    // User cancelled
+                                currentReader = null;
+                                if (error.name === 'AbortError') {
+                                    // User stopped generation
+                                    resolve();
+                                } else if (!isGenerating) {
+                                    // Generation was stopped
                                     resolve();
                                 } else {
+                                    // Actual error occurred
                                     reject(error);
                                 }
                             });
@@ -147,7 +172,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         read();
                     })
                     .catch((error) => {
-                        reject(error);
+                        if (error.name === 'AbortError') {
+                            // Fetch was aborted
+                            resolve();
+                        } else {
+                            reject(error);
+                        }
                     });
             } catch (error) {
                 reject(error);
