@@ -30,7 +30,7 @@ COLOR_BLUE     := \033[34m
 # Main Targets
 # ============================================================================
 
-.PHONY: all help build test clean serve rebuild demo info rebuild check-model train-tokenizer train-bpe-tokenizer compare-tokenizers
+.PHONY: all help build test clean serve rebuild demo info check-model train-tokenizer train-bpe-tokenizer compare-tokenizers
 
 # Default target
 all: help
@@ -41,22 +41,22 @@ help:
 	@echo "$(COLOR_BOLD)Markov Trigram Project - Makefile$(COLOR_RESET)"
 	@echo ""
 	@echo "$(COLOR_BOLD)Available targets:$(COLOR_RESET)"
-	@echo "  $(COLOR_GREEN)help$(COLOR_RESET)              - Show this help message"
-	@echo "  $(COLOR_GREEN)build-model$(COLOR_RESET)       - Build trigram model from all corpus files"
-	@echo "  $(COLOR_GREEN)train-tokenizer$(COLOR_RESET)   - Train unigram tokenizer from corpus"
-	@echo "  $(COLOR_GREEN)train-bpe-tokenizer$(COLOR_RESET) - Train BPE tokenizer from corpus"
-	@echo "  $(COLOR_GREEN)compare-tokenizers$(COLOR_RESET) - Compare unigram vs BPE output"
-	@echo "  $(COLOR_GREEN)generate$(COLOR_RESET)          - Generate text from a prompt (use PROMPT variable)"
-	@echo "  $(COLOR_GREEN)query$(COLOR_RESET)             - Query trigram probability (use W1, W2, W3 variables)"
-	@echo "  $(COLOR_GREEN)serve$(COLOR_RESET)             - Start web server (port 3000)"
-	@echo "  $(COLOR_GREEN)test$(COLOR_RESET)              - Run Rust tests"
-	@echo "  $(COLOR_GREEN)build$(COLOR_RESET)             - Build Rust binaries"
-	@echo "  $(COLOR_GREEN)format$(COLOR_RESET)            - Format Rust code with cargo fmt"
-	@echo "  $(COLOR_GREEN)lint$(COLOR_RESET)              - Run clippy linter"
-	@echo "  $(COLOR_GREEN)clean$(COLOR_RESET)             - Clean build artifacts and generated files"
-	@echo "  $(COLOR_GREEN)clean-all$(COLOR_RESET)         - Deep clean including tokenizer"
-	@echo "  $(COLOR_GREEN)info$(COLOR_RESET)              - Show configuration info"
-	@echo "  $(COLOR_GREEN)demo$(COLOR_RESET)              - Quick demo with Sherlock Holmes prompt"
+	@echo "  $(COLOR_GREEN)help$(COLOR_RESET)                 - Show this help message"
+	@echo "  $(COLOR_GREEN)build-model$(COLOR_RESET)          - Build trigram model from all corpus files"
+	@echo "  $(COLOR_GREEN)train-tokenizer$(COLOR_RESET)      - Train unigram tokenizer from corpus"
+	@echo "  $(COLOR_GREEN)train-bpe-tokenizer$(COLOR_RESET)  - Train BPE tokenizer from corpus"
+	@echo "  $(COLOR_GREEN)compare-tokenizers$(COLOR_RESET)   - Compare tokenizer quality (intrinsic metrics)"
+	@echo "  $(COLOR_GREEN)generate$(COLOR_RESET)             - Generate text from a prompt (use PROMPT variable)"
+	@echo "  $(COLOR_GREEN)query$(COLOR_RESET)                - Query trigram probability (use W1, W2, W3 variables)"
+	@echo "  $(COLOR_GREEN)serve$(COLOR_RESET)                - Start web server (port 3000)"
+	@echo "  $(COLOR_GREEN)test$(COLOR_RESET)                 - Run Rust tests"
+	@echo "  $(COLOR_GREEN)build$(COLOR_RESET)                - Build Rust binaries"
+	@echo "  $(COLOR_GREEN)format$(COLOR_RESET)               - Format Rust code with cargo fmt"
+	@echo "  $(COLOR_GREEN)lint$(COLOR_RESET)                 - Run clippy linter"
+	@echo "  $(COLOR_GREEN)clean$(COLOR_RESET)                - Clean build artifacts and generated files"
+	@echo "  $(COLOR_GREEN)clean-all$(COLOR_RESET)            - Deep clean including tokenizer"
+	@echo "  $(COLOR_GREEN)info$(COLOR_RESET)                 - Show configuration info"
+	@echo "  $(COLOR_GREEN)demo$(COLOR_RESET)                 - Quick demo with Sherlock Holmes prompt"
 	@echo ""
 	@echo "$(COLOR_BOLD)Examples:$(COLOR_RESET)"
 	@echo "  make build-model"
@@ -66,7 +66,6 @@ help:
 	@echo "  make generate PROMPT=\"Sherlock Holmes\" MAX_TOKENS=100"
 	@echo "  make generate PROMPT=\"Watson said\" SEED=42"
 	@echo "  make query W1=Sherlock W2=Holmes W3=was"
-	@echo ""
 
 # ============================================================================
 # Model Building
@@ -114,18 +113,22 @@ train-bpe-tokenizer:
 	@echo ""
 	@echo "$(COLOR_GREEN)✓ BPE tokenizer trained: $(TOKENIZER_BPE_FILE)$(COLOR_RESET)"
 
-# Compare Unigram vs BPE tokenizers
+# Compare Unigram vs BPE tokenizers - Intrinsic Quality Metrics
 .PHONY: compare-tokenizers
-compare-tokenizers: | $(TOKENIZER_FILE) $(TOKENIZER_BPE_FILE)
+compare-tokenizers: build-rust $(TOKENIZER_FILE) $(TOKENIZER_BPE_FILE)
 	@echo ""
-	@echo "$(COLOR_BOLD)Comparing Unigram vs BPE Tokenizers$(COLOR_RESET)"
-	@echo "Test text: നമസ്കാരം എങ്ങനെയുണ്ട്?"
+	$(CARGO) run --release --bin compare-tokenizers -- \
+		--tokenizer1 $(TOKENIZER_FILE) \
+		--tokenizer2 $(TOKENIZER_BPE_FILE) \
+		--corpus $(CORPUS_DIR) \
+		--name1 "Unigram" \
+		--name2 "BPE" \
+		--output tokenizer_comparison.md \
+		--json tokenizer_comparison.json
 	@echo ""
-	@echo "$(COLOR_BLUE)═ Unigram Tokenizer:$(COLOR_RESET)"
-	@$(CARGO_TOK) encode -t $(TOKENIZER_FILE) "നമസ്കാരം എങ്ങനെയുണ്ട്?"
-	@echo ""
-	@echo "$(COLOR_BLUE)═ BPE Tokenizer:$(COLOR_RESET)"
-	@$(CARGO_BPE_TOK) encode -t $(TOKENIZER_BPE_FILE) "നമസ്കാരം എങ്ങനെയുണ്ട്?"
+	@echo "$(COLOR_GREEN)Reports generated:$(COLOR_RESET)"
+	@echo "  📄 Markdown: tokenizer_comparison.md"
+	@echo "  📊 JSON:     tokenizer_comparison.json"
 	@echo ""
 
 # ============================================================================

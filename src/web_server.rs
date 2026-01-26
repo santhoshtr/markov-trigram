@@ -7,9 +7,9 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
-use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::Rng;
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;

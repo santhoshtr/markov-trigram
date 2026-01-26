@@ -12,6 +12,10 @@ name = "ml_bpe_tokenizer"
 path = "src/tokenizer/ml_bpe_tokenizer.rs"
 
 [[bin]]
+name = "compare-tokenizers"
+path = "src/tokenizer/compare_tokenizers.rs"
+
+[[bin]]
 name = "markov-web"
 path = "src/web_server.rs"
 
@@ -31,3 +35,4 @@ tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 tower = "0.5"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+chrono = "0.4"
