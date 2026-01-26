@@ -16,6 +16,7 @@ CARGO          := cargo
 CARGO_BUILD    := $(CARGO) build --release
 CARGO_RUN      := $(CARGO) run --release --bin markov-trigram --
 CARGO_TOK      := $(CARGO) run --release --bin ml_unigram_tokenizer --
+CARGO_BPE_TOK  := $(CARGO) run --release --bin ml_bpe_tokenizer --
 CARGO_WEB      := $(CARGO) run --release --bin markov-web --
 
 # Colors for output
@@ -29,7 +30,7 @@ COLOR_BLUE     := \033[34m
 # Main Targets
 # ============================================================================
 
-.PHONY: all help build test clean serve rebuild demo info rebuild check-model
+.PHONY: all help build test clean serve rebuild demo info rebuild check-model train-tokenizer train-bpe-tokenizer compare-tokenizers
 
 # Default target
 all: help
@@ -42,7 +43,9 @@ help:
 	@echo "$(COLOR_BOLD)Available targets:$(COLOR_RESET)"
 	@echo "  $(COLOR_GREEN)help$(COLOR_RESET)              - Show this help message"
 	@echo "  $(COLOR_GREEN)build-model$(COLOR_RESET)       - Build trigram model from all corpus files"
-	@echo "  $(COLOR_GREEN)train-tokenizer$(COLOR_RESET)   - Train tokenizer from corpus directory"
+	@echo "  $(COLOR_GREEN)train-tokenizer$(COLOR_RESET)   - Train unigram tokenizer from corpus"
+	@echo "  $(COLOR_GREEN)train-bpe-tokenizer$(COLOR_RESET) - Train BPE tokenizer from corpus"
+	@echo "  $(COLOR_GREEN)compare-tokenizers$(COLOR_RESET) - Compare unigram vs BPE output"
 	@echo "  $(COLOR_GREEN)generate$(COLOR_RESET)          - Generate text from a prompt (use PROMPT variable)"
 	@echo "  $(COLOR_GREEN)query$(COLOR_RESET)             - Query trigram probability (use W1, W2, W3 variables)"
 	@echo "  $(COLOR_GREEN)serve$(COLOR_RESET)             - Start web server (port 3000)"
@@ -57,10 +60,12 @@ help:
 	@echo ""
 	@echo "$(COLOR_BOLD)Examples:$(COLOR_RESET)"
 	@echo "  make build-model"
+	@echo "  make train-tokenizer VOCAB_SIZE=20000"
+	@echo "  make train-bpe-tokenizer VOCAB_SIZE=16000"
+	@echo "  make compare-tokenizers"
 	@echo "  make generate PROMPT=\"Sherlock Holmes\" MAX_TOKENS=100"
 	@echo "  make generate PROMPT=\"Watson said\" SEED=42"
 	@echo "  make query W1=Sherlock W2=Holmes W3=was"
-	@echo "  make train-tokenizer VOCAB_SIZE=20000"
 	@echo ""
 
 # ============================================================================
@@ -80,7 +85,7 @@ build-model: build-rust
 # ============================================================================
 
 train-tokenizer:
-	@echo "$(COLOR_BOLD)Training tokenizer...$(COLOR_RESET)"
+	@echo "$(COLOR_BOLD)Training Unigram tokenizer...$(COLOR_RESET)"
 	@echo "Corpus directory: $(CORPUS_DIR)"
 	@echo "Vocabulary size: $(VOCAB_SIZE)"
 	@echo "Output: $(TOKENIZER_FILE)"
@@ -90,7 +95,38 @@ train-tokenizer:
 		-v $(VOCAB_SIZE) \
 		-o $(TOKENIZER_FILE)
 	@echo ""
-	@echo "$(COLOR_GREEN)✓ Tokenizer trained: $(TOKENIZER_FILE)$(COLOR_RESET)"
+	@echo "$(COLOR_GREEN)✓ Unigram tokenizer trained: $(TOKENIZER_FILE)$(COLOR_RESET)"
+
+# Training BPE tokenizer
+TOKENIZER_BPE_FILE := $(DATA_DIR)/tokenizer.ml.bpe.json
+
+train-bpe-tokenizer:
+	@echo "$(COLOR_BOLD)Training BPE tokenizer...$(COLOR_RESET)"
+	@echo "Corpus directory: $(CORPUS_DIR)"
+	@echo "Vocabulary size: $(VOCAB_SIZE)"
+	@echo "Output: $(TOKENIZER_BPE_FILE)"
+	@mkdir -p $(DATA_DIR)
+	$(CARGO_BPE_TOK) train \
+		-f $(CORPUS_DIR) \
+		-v $(VOCAB_SIZE) \
+		-m 2 \
+		-o $(TOKENIZER_BPE_FILE)
+	@echo ""
+	@echo "$(COLOR_GREEN)✓ BPE tokenizer trained: $(TOKENIZER_BPE_FILE)$(COLOR_RESET)"
+
+# Compare Unigram vs BPE tokenizers
+.PHONY: compare-tokenizers
+compare-tokenizers: | $(TOKENIZER_FILE) $(TOKENIZER_BPE_FILE)
+	@echo ""
+	@echo "$(COLOR_BOLD)Comparing Unigram vs BPE Tokenizers$(COLOR_RESET)"
+	@echo "Test text: നമസ്കാരം എങ്ങനെയുണ്ട്?"
+	@echo ""
+	@echo "$(COLOR_BLUE)═ Unigram Tokenizer:$(COLOR_RESET)"
+	@$(CARGO_TOK) encode -t $(TOKENIZER_FILE) "നമസ്കാരം എങ്ങനെയുണ്ട്?"
+	@echo ""
+	@echo "$(COLOR_BLUE)═ BPE Tokenizer:$(COLOR_RESET)"
+	@$(CARGO_BPE_TOK) encode -t $(TOKENIZER_BPE_FILE) "നമസ്കാരം എങ്ങനെയുണ്ട്?"
+	@echo ""
 
 # ============================================================================
 # Text Generation
