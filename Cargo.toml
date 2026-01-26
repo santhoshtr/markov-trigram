@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "ml_tokenizer"
-path = "src/ml_tokenizer.rs"
+name = "ml_unigram_tokenizer"
+path = "src/tokenizer/ml_unigram_tokenizer.rs"
+
+[[bin]]
+name = "ml_bpe_tokenizer"
+path = "src/tokenizer/ml_bpe_tokenizer.rs"
 
 [[bin]]
 name = "markov-web"

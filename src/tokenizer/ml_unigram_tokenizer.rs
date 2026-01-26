@@ -97,7 +97,7 @@ fn encode_text(tokenizer_path: &str, text: &str) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let matches = Command::new("ML Tokenizer")
+    let matches = Command::new("ML Unigram Tokenizer")
         .version("1.0")
         .author("Your Name")
         .about("Train and use Unigram tokenizers for Malayalam")

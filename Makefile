@@ -15,7 +15,7 @@ VOCAB_SIZE     := 16000
 CARGO          := cargo
 CARGO_BUILD    := $(CARGO) build --release
 CARGO_RUN      := $(CARGO) run --release --bin markov-trigram --
-CARGO_TOK      := $(CARGO) run --release --bin ml_tokenizer --
+CARGO_TOK      := $(CARGO) run --release --bin ml_unigram_tokenizer --
 CARGO_WEB      := $(CARGO) run --release --bin markov-web --
 
 # Colors for output
