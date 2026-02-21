@@ -8,7 +8,7 @@ use axum::{
 };
 use clap::Parser;
 use rand::rngs::StdRng;
-use rand::Rng;
+use rand::RngExt;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -18,9 +18,11 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 
 mod direct_map;
+mod hub_tokenizer;
 mod sparse_trigram;
 mod trigram_iterator;
 
+use hub_tokenizer::{load_tokenizer, TokenizerType};
 use sparse_trigram::SparseTrigram;
 
 /// Request payload for generation
@@ -53,9 +55,13 @@ struct Args {
     #[arg(short, long, default_value = "trigram_model.bin")]
     model: String,
 
-    /// Path to tokenizer file
-    #[arg(short, long, default_value = "data/tokenizer.ml.json")]
-    tokenizer: String,
+    /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
+    #[arg(long, default_value = "bpe")]
+    tokenizer_type: TokenizerType,
+
+    /// Path to a local tokenizer file (overrides --tokenizer-type)
+    #[arg(short, long)]
+    tokenizer: Option<String>,
 
     /// Server host
     #[arg(long, default_value = "127.0.0.1")]
@@ -75,9 +81,7 @@ async fn main() -> Result<()> {
     let model = SparseTrigram::load(&args.model)?;
     println!("Model loaded with {} trigrams", model.total_trigrams);
 
-    println!("Loading tokenizer from: {}", args.tokenizer);
-    let tokenizer = Tokenizer::from_file(&args.tokenizer)
-        .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
+    let tokenizer = load_tokenizer(args.tokenizer.as_deref(), &args.tokenizer_type)?;
     println!("Tokenizer loaded");
 
     let state = Arc::new(AppState { model, tokenizer });

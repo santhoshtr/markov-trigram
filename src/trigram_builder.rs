@@ -19,8 +19,7 @@ pub struct TrigramBuilder {
 }
 
 impl TrigramBuilder {
-    pub fn new(tokenizer_path: &str, max_memory_mb: usize) -> Self {
-        let tokenizer: Tokenizer = Tokenizer::from_file(tokenizer_path).unwrap();
+    pub fn new(tokenizer: Tokenizer, max_memory_mb: usize) -> Self {
         let vocabulary_size = tokenizer.get_vocab_size(true) as u32;
 
         Self {

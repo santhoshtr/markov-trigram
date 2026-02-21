@@ -1,15 +1,16 @@
 mod direct_map;
+mod hub_tokenizer;
 mod sparse_trigram;
 mod trigram_builder;
 mod trigram_iterator;
 
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use hub_tokenizer::{load_tokenizer, TokenizerType};
 use markov_trigram::find_text_files;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use sparse_trigram::SparseTrigram;
-use tokenizers::Tokenizer;
 use trigram_builder::TrigramBuilder;
 #[derive(Parser)]
 #[command(name = "markov-trigram")]
@@ -29,9 +30,12 @@ enum Commands {
         /// Output model file path
         #[arg(short, long, default_value = "trigram_model.bin")]
         output: String,
-        /// Path to tokenizer file
-        #[arg(short, long, default_value = "data/tokenizer.ml.json")]
-        tokenizer: String,
+        /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
+        #[arg(long, default_value = "bpe")]
+        tokenizer_type: TokenizerType,
+        /// Path to a local tokenizer file (overrides --tokenizer-type)
+        #[arg(short, long)]
+        tokenizer: Option<String>,
         /// Maximum memory usage in MB
         #[arg(short, long, default_value = "1024")]
         max_memory: usize,
@@ -41,9 +45,12 @@ enum Commands {
         /// Path to the model file
         #[arg(short, long, default_value = "trigram_model.bin")]
         model: String,
-        /// Path to tokenizer file
-        #[arg(short, long, default_value = "data/tokenizer.ml.json")]
-        tokenizer_path: String,
+        /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
+        #[arg(long, default_value = "bpe")]
+        tokenizer_type: TokenizerType,
+        /// Path to a local tokenizer file (overrides --tokenizer-type)
+        #[arg(short, long)]
+        tokenizer: Option<String>,
 
         /// First word (w1)
         #[arg(long)]
@@ -66,9 +73,12 @@ enum Commands {
         /// Path to the model file
         #[arg(short, long, default_value = "trigram_model.bin")]
         model: String,
-        /// Path to tokenizer file
-        #[arg(short, long, default_value = "data/tokenizer.ml.json")]
-        tokenizer_path: String,
+        /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
+        #[arg(long, default_value = "bpe")]
+        tokenizer_type: TokenizerType,
+        /// Path to a local tokenizer file (overrides --tokenizer-type)
+        #[arg(short, long)]
+        tokenizer: Option<String>,
         /// Maximum number of tokens to generate
         #[arg(long, default_value = "1000")]
         max_tokens: usize,
@@ -85,14 +95,15 @@ fn main() -> Result<()> {
         Commands::Build {
             directory,
             output,
+            tokenizer_type,
             tokenizer,
             max_memory,
         } => {
+            let tok = load_tokenizer(tokenizer.as_deref(), &tokenizer_type)?;
             println!(
                 "Building trigram model from corpus directory: {}",
                 directory
             );
-            println!("Using tokenizer: {}", tokenizer);
             println!();
 
             // Discover all text files in the directory
@@ -106,7 +117,7 @@ fn main() -> Result<()> {
             println!("Found {} text file(s) to process", corpus_files.len());
             println!();
 
-            let mut builder = TrigramBuilder::new(&tokenizer, max_memory);
+            let mut builder = TrigramBuilder::new(tok, max_memory);
 
             // Process each corpus file with progress indicator
             let mut successful = 0;
@@ -170,8 +181,8 @@ fn main() -> Result<()> {
         }
         Commands::Query {
             model,
-            tokenizer_path,
-
+            tokenizer_type,
+            tokenizer,
             w1,
             w2,
             w3,
@@ -179,11 +190,9 @@ fn main() -> Result<()> {
         } => {
             println!("Loading model from: {}", model);
             let loaded_model = SparseTrigram::load(&model)?;
-            let tokenizer: Tokenizer = Tokenizer::from_file(tokenizer_path).unwrap();
+            let tok = load_tokenizer(tokenizer.as_deref(), &tokenizer_type)?;
             println!("Querying P({} | {}, {})", w3, w1, w2);
-            let tokens = tokenizer
-                .encode(format!("{} {} {}", w1, w2, w3), false)
-                .unwrap();
+            let tokens = tok.encode(format!("{} {} {}", w1, w2, w3), false).unwrap();
             // Take the last 3 tokens as w1, w2, w3
             let token_ids = tokens.get_ids();
             if token_ids.len() < 3 {
@@ -201,15 +210,15 @@ fn main() -> Result<()> {
         }
         Commands::Generate {
             model,
-            tokenizer_path,
+            tokenizer_type,
+            tokenizer,
             prompt,
             max_tokens,
             seed,
         } => {
             // Load model and tokenizer
             let loaded_model = SparseTrigram::load(&model)?;
-            let tokenizer = Tokenizer::from_file(tokenizer_path)
-                .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
+            let tok = load_tokenizer(tokenizer.as_deref(), &tokenizer_type)?;
 
             // Validate prompt
             if prompt.trim().is_empty() {
@@ -217,7 +226,7 @@ fn main() -> Result<()> {
             }
 
             // Tokenize the prompt
-            let encoding = tokenizer
+            let encoding = tok
                 .encode(prompt.as_str(), false)
                 .map_err(|e| anyhow!("Failed to tokenize prompt: {}", e))?;
             let token_ids = encoding.get_ids();
@@ -266,11 +275,11 @@ fn main() -> Result<()> {
             }
 
             // Decode all tokens to text
-            let generated_text = tokenizer
+            let generated_text = tok
                 .decode(&all_tokens, true)
                 .map_err(|e| anyhow!("Failed to decode tokens: {}", e))?;
 
-            // Output the generated text (Option A: clean output only)
+            // Output the generated text
             println!("{}", generated_text);
         }
     }
@@ -285,9 +294,10 @@ mod tests {
     use rand::SeedableRng;
     use std::io::Write;
     use tempfile::NamedTempFile;
+    use tokenizers::Tokenizer;
 
     // Helper function to create a minimal test tokenizer
-    fn create_test_tokenizer() -> Result<NamedTempFile> {
+    fn create_test_tokenizer() -> Result<(Tokenizer, NamedTempFile)> {
         let mut temp_file = NamedTempFile::new()?;
 
         // Minimal tokenizer JSON that should work with tokenizers crate
@@ -326,15 +336,16 @@ mod tests {
 
         temp_file.write_all(tokenizer_json.as_bytes())?;
         temp_file.flush()?;
-        Ok(temp_file)
+        let path = temp_file.path().to_str().unwrap().to_string();
+        let tokenizer = Tokenizer::from_file(&path)
+            .map_err(|e| anyhow!("Failed to load test tokenizer: {e}"))?;
+        Ok((tokenizer, temp_file))
     }
 
     #[test]
     fn test_trigram_storage() -> Result<()> {
-        let tokenizer_file = create_test_tokenizer()?;
-        let tokenizer_path = tokenizer_file.path().to_str().unwrap();
-
-        let mut builder = TrigramBuilder::new(tokenizer_path, 10);
+        let (tokenizer, _file) = create_test_tokenizer()?;
+        let mut builder = TrigramBuilder::new(tokenizer, 10);
 
         // Add some trigrams directly
         builder.add_trigram(1, 2, 3);
@@ -356,10 +367,8 @@ mod tests {
 
     #[test]
     fn test_probability_calculation() -> Result<()> {
-        let tokenizer_file = create_test_tokenizer()?;
-        let tokenizer_path = tokenizer_file.path().to_str().unwrap();
-
-        let mut builder = TrigramBuilder::new(tokenizer_path, 10);
+        let (tokenizer, _file) = create_test_tokenizer()?;
+        let mut builder = TrigramBuilder::new(tokenizer, 10);
 
         // Add trigrams to create known probabilities
         for _ in 0..3 {
@@ -390,10 +399,8 @@ mod tests {
 
     #[test]
     fn test_sampling() -> Result<()> {
-        let tokenizer_file = create_test_tokenizer()?;
-        let tokenizer_path = tokenizer_file.path().to_str().unwrap();
-
-        let mut builder = TrigramBuilder::new(tokenizer_path, 10);
+        let (tokenizer, _file) = create_test_tokenizer()?;
+        let mut builder = TrigramBuilder::new(tokenizer, 10);
 
         builder.add_trigram(1, 2, 3);
         builder.add_trigram(1, 2, 4);

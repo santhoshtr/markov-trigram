@@ -1,9 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-// Public modules
-pub mod tokenizer;
-
 /// Extensions to exclude from file discovery
 const EXCLUDED_EXTENSIONS: &[&str] = &["md", "jpg", "pdf", "png", "js", "json", "html"];
 

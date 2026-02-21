@@ -4,18 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "ml_unigram_tokenizer"
-path = "src/tokenizer/ml_unigram_tokenizer.rs"
-
-[[bin]]
-name = "ml_bpe_tokenizer"
-path = "src/tokenizer/ml_bpe_tokenizer.rs"
-
-[[bin]]
-name = "compare-tokenizers"
-path = "src/tokenizer/compare_tokenizers.rs"
-
-[[bin]]
 name = "markov-web"
 path = "src/web_server.rs"
 
@@ -25,14 +13,16 @@ rkyv = { version = "0.8.14", features = [] }
 rayon = "1.11.0"
 serde = {version="1.0.228", features=["derive"]}
 serde_json = "1.0"
-rand = "0.9.2"
+rand = "0.10.0"
 clap = { version = "4.5", features = ["derive"] }
 tokenizers = "0.22.2"
-tempfile = "3.24.0"
+hf-hub = { version = "0.5", features = ["ureq"] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
 tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 tower = "0.5"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3.24.0"

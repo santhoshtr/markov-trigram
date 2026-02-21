@@ -163,7 +163,7 @@ impl SparseTrigram {
     }
 
     /// Sample next word given context (w1, w2)
-    pub fn sample_next(&self, w1: u32, w2: u32, rng: &mut impl rand::Rng) -> Option<u32> {
+    pub fn sample_next(&self, w1: u32, w2: u32, rng: &mut impl rand::RngExt) -> Option<u32> {
         let candidates = self.get_w3_candidates(w1, w2);
 
         if candidates.is_empty() {
