@@ -98,6 +98,18 @@ impl TrigramBuilder {
             .map(|line| {
                 let mut local_map = HashMap::new();
 
+                let first_char = line.chars().next();
+                let valid_start = first_char.map_or(false, |c| {
+                    ('\u{0D00}'..='\u{0D7F}').contains(&c)
+                        || c.is_ascii_digit()
+                        || c == '"'
+                        || c == '\''
+                        || c == '\u{201C}'
+                });
+                if !valid_start {
+                    return local_map;
+                }
+
                 // Tokenize the entire line at once (more efficient)
                 if let Ok(encoded) = tokenizer.encode(line.as_str(), false) {
                     let word_ids = encoded.get_ids();
