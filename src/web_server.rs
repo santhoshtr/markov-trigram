@@ -56,7 +56,7 @@ struct Args {
     model: String,
 
     /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
-    #[arg(long, default_value = "bpe")]
+    #[arg(long, default_value = "unigram")]
     tokenizer_type: TokenizerType,
 
     /// Path to a local tokenizer file (overrides --tokenizer-type)
