@@ -16,9 +16,7 @@ Today, most large language models rely on BPE (Byte-Pair Encoding) or close vari
 
 This post explains why Malayalam needs a different approach and how I built a custom Unigram tokenizer. In Part 2, we will evaluate it with a trigram Markov model and a live text generator.
 
-Links to the series:
-- Part 1 (this post): Tokenizer
-- Part 2: From Tokens to Text with Trigrams (link at the end once published)
+
 
 References and resources along the way:
 - SMC Malayalam Corpus: https://gitlab.com/smc/corpus/
@@ -195,13 +193,6 @@ Placeholders for results (to be filled with your measurements):
 | `<unk>` rate (%) | TODO | TODO |
 
 {{< figure src="/images/TODO-tokenization-comparison-chart.png" caption="Placeholder: Chart comparing BPE vs Unigram on coverage and tokens/word for a held-out set." >}}
-
-## What’s Next (Part 2)
-
-With a strong tokenizer in hand, the next step is to evaluate how well it captures Malayalam patterns in context. In Part 2, I’ll build a trigram Markov model over these tokens, analyze sparsity and memory, and deploy a simple text generator you can try online.
-
-- Continue to Part 2: From Tokens to Text with Trigrams (link will appear here when published)
-- Live generator preview: https://malgen.thottingal.in/
 
 {{< notice info >}}
 If you want to reproduce this work, clone the repo [TODO: https://github.com/santhoshtr/markov-trigram], train with `make train-tokenizer`, and try encoding your own sentences.
