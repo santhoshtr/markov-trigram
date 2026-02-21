@@ -41,7 +41,7 @@ body {
 /* Header */
 .header {
 	text-align: center;
-	padding: 40px 0 30px;
+	padding: 1em;
 
 	h1 {
 		font-size: 28px;
@@ -253,7 +253,7 @@ body {
 /* Footer */
 .footer {
 	text-align: center;
-	padding: 30px 0;
+	padding: 1em;
 	font-size: 12px;
 	opacity: 0.6;
 	border-top: 1px solid color-mix(in srgb, CanvasText 10%, Canvas 90%);

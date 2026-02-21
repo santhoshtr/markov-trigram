@@ -6,9 +6,6 @@ document.addEventListener("DOMContentLoaded", () => {
 	const status = document.getElementById("status");
 	const tokenCount = document.getElementById("tokenCount");
 
-	// Set default placeholder
-	promptInput.value = "ഇനല രവല";
-
 	generateBtn.addEventListener("click", () => {
 		const prompt = promptInput.value.trim();
 
@@ -72,7 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			const data = await response.json();
 
 			// Update status for typing phase
-			status.textContent = "✨ Typing...";
+			status.textContent = "✨ Generating...";
 			status.className = "status generating";
 
 			// Type the text with animation
