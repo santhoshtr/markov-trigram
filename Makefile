@@ -56,8 +56,8 @@ help:
 	@echo ""
 	@echo "$(COLOR_BOLD)Tokenizer:$(COLOR_RESET)"
 	@echo "  Downloaded automatically from HuggingFace Hub on first use."
-	@echo "  Default: smcproject/malayalam-bpe-tokenizer"
-	@echo "  Override: pass --tokenizer-type unigram or -t /path/to/tokenizer.json"
+	@echo "  Default: smcproject/malayalam-unigram-tokenizer"
+	@echo "  Override: pass --tokenizer-type bpe or -t /path/to/tokenizer.json"
 
 # ============================================================================
 # Model Building
@@ -170,7 +170,7 @@ info:
 	@echo "  Data directory:    $(DATA_DIR)"
 	@echo "  Model file:        $(MODEL_FILE)"
 	@echo "  Max memory:        $(MAX_MEMORY) MB"
-	@echo "  Tokenizer:         smcproject/malayalam-bpe-tokenizer (HuggingFace Hub)"
+	@echo "  Tokenizer:         smcproject/malayalam-unigram-tokenizer (HuggingFace Hub)"
 	@echo ""
 	@echo "$(COLOR_BOLD)Corpus files found:$(COLOR_RESET)"
 	@find $(CORPUS_DIR) -type f -name "*.txt" 2>/dev/null | while read -r file; do \

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use hf_hub::api::sync::Api;
 use tokenizers::Tokenizer;
 
@@ -8,8 +8,8 @@ const UNIGRAM_REPO: &str = "smcproject/malayalam-unigram-tokenizer";
 #[derive(Clone, Debug, Default, clap::ValueEnum)]
 pub enum TokenizerType {
     #[default]
-    Bpe,
     Unigram,
+    Bpe,
 }
 
 /// Load a tokenizer from a local path or from HuggingFace Hub.

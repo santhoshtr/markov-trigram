@@ -4,9 +4,9 @@ mod sparse_trigram;
 mod trigram_builder;
 mod trigram_iterator;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
-use hub_tokenizer::{load_tokenizer, TokenizerType};
+use hub_tokenizer::{TokenizerType, load_tokenizer};
 use markov_trigram::find_text_files;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -31,7 +31,7 @@ enum Commands {
         #[arg(short, long, default_value = "trigram_model.bin")]
         output: String,
         /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
-        #[arg(long, default_value = "bpe")]
+        #[arg(long, default_value = "unigram")]
         tokenizer_type: TokenizerType,
         /// Path to a local tokenizer file (overrides --tokenizer-type)
         #[arg(short, long)]
@@ -46,7 +46,7 @@ enum Commands {
         #[arg(short, long, default_value = "trigram_model.bin")]
         model: String,
         /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
-        #[arg(long, default_value = "bpe")]
+        #[arg(long, default_value = "unigram")]
         tokenizer_type: TokenizerType,
         /// Path to a local tokenizer file (overrides --tokenizer-type)
         #[arg(short, long)]
@@ -74,7 +74,7 @@ enum Commands {
         #[arg(short, long, default_value = "trigram_model.bin")]
         model: String,
         /// Tokenizer type to download from HuggingFace Hub (ignored if -t is set)
-        #[arg(long, default_value = "bpe")]
+        #[arg(long, default_value = "unigram")]
         tokenizer_type: TokenizerType,
         /// Path to a local tokenizer file (overrides --tokenizer-type)
         #[arg(short, long)]
@@ -290,8 +290,8 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
     use std::io::Write;
     use tempfile::NamedTempFile;
     use tokenizers::Tokenizer;
